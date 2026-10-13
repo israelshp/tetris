@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>גשם לבנים</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=Assistant:wght@400;600;700&display=swap">
+<style>
+/* Layout: one-screen arcade cabinet — stats strip on top, well in the middle, thumb pad at the bottom */
+:root{
+  --bg:#12111c; --well:#0a0a12; --panel:#1c1a2b; --line:#2c2942;
+  --fg:#ecebf5; --muted:#8f8ba8; --accent:#ffb547; --ice:#9fe3ff;
+  --font-display:"Secular One","Assistant",system-ui,sans-serif;
+  --font-body:"Assistant",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.app{height:100%;display:flex;flex-direction:column;gap:10px;padding-inline:16px;padding-block:10px;max-width:520px;margin:0 auto;box-sizing:border-box}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{font-family:var(--font-display);font-weight:400;font-size:1.5rem;margin:0;letter-spacing:.01em;flex:1}
+h1 span{color:var(--accent)}
+.iconbtn{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;font:600 .9rem var(--font-body);padding:6px 12px;cursor:pointer}
+.iconbtn:focus-visible,.pad button:focus-visible,.overlay button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{background:var(--panel);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font:400 .72rem var(--font-body);color:var(--muted);letter-spacing:.06em;white-space:nowrap}
+.stat output{font:700 1.15rem var(--font-body);font-variant-numeric:tabular-nums;direction:ltr;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.stage{flex:1;min-height:0;display:flex;gap:10px;justify-content:center;align-items:stretch}
+.side{display:flex;flex-direction:column;gap:8px;width:72px;flex:none}
+.mini{background:var(--panel);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;align-items:center}
+.mini b{font:400 .72rem var(--font-body);color:var(--muted);letter-spacing:.06em}
+.mini canvas{width:60px;height:auto;display:block}
+.legend{display:flex;flex-direction:column;gap:6px;font-size:.72rem;color:var(--muted);line-height:1.3;padding:4px 2px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:4px;vertical-align:-1px}
+.wellwrap{position:relative;flex:1;min-width:0;display:flex;justify-content:center;align-items:flex-start}
+#board{touch-action:none;display:block;background:var(--well);border:2px solid var(--line);border-radius:6px;max-width:100%;transition:border-color .3s}
+#board.iced{border-color:var(--ice)}
+
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(10,10,18,.86);border-radius:6px;text-align:center;padding:16px}
+.overlay h2{font-family:var(--font-display);font-weight:400;font-size:1.8rem;margin:0;color:var(--accent);text-wrap:balance}
+.overlay p{margin:0;color:var(--muted);max-width:28ch;line-height:1.5}
+.modes{display:flex;flex-direction:column;gap:8px;width:min(220px,100%)}
+.overlay button{background:var(--accent);color:#1a1205;border:0;border-radius:12px;font:700 1.05rem var(--font-body);padding:11px 18px;cursor:pointer}
+.overlay button.alt{background:var(--panel);color:var(--fg);border:1px solid var(--line)}
+.overlay button small{display:block;font-weight:600;font-size:.75rem;opacity:.7}
+
+.pad{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;direction:ltr}
+.pad button{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;height:56px;font:700 1.3rem var(--font-body);cursor:pointer;touch-action:none}
+.pad button:active,.pad button.on{background:var(--line)}
+.pad .drop{background:var(--accent);color:#1a1205;border-color:var(--accent)}
+.pad small{display:block;font-size:.62rem;font-weight:600;color:var(--muted);margin-top:1px}
+.pad .drop small{color:#5a3d0a}
+.keys{font-size:.78rem;color:var(--muted);text-align:center;margin:0}
+@media (hover:none){.keys{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+body{margin:0}
+</style>
+</head>
+<body>
+
+<div class="app" dir="rtl">
+  <header>
+    <h1>גשם <span>לבנים</span></h1>
+    <button class="iconbtn" id="muteBtn" type="button">השתק</button>
+    <button class="iconbtn" id="pauseBtn" type="button">השהה</button>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b>ניקוד</b><output id="score">0</output></div>
+    <div class="stat"><b id="lab2">שורות</b><output id="lines">0</output></div>
+    <div class="stat"><b id="lab3">שלב</b><output id="level">1</output></div>
+    <div class="stat"><b id="lab4">שיא</b><output id="best">0</output></div>
+  </div>
+
+  <div class="stage">
+    <div class="side">
+      <div class="mini"><b>הבא</b><canvas id="next" width="120" height="300"></canvas></div>
+    </div>
+    <div class="wellwrap" id="wellwrap">
+      <canvas id="board"></canvas>
+      <div class="overlay" id="overlay">
+        <h2 id="ovTitle">גשם לבנים</h2>
+        <p id="ovText">סדרו את הלבנים לשורות מלאות. שימו לב ללבנים המיוחדות: פצצה מפוצצת את מה שסביבה, וקרח מאט את הנפילה.</p>
+        <div class="modes" id="modes">
+          <button id="marathonBtn" type="button">מרתון<small>כמה שיותר נקודות</small></button>
+          <button id="sprintBtn" class="alt" type="button">ספרינט 40<small>40 שורות מהר ככל האפשר</small></button>
+        </div>
+        <button id="resumeBtn" type="button" hidden>המשך</button>
+      </div>
+    </div>
+    <div class="side">
+      <div class="mini"><b>שמור</b><canvas id="hold" width="120" height="80"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#ff5a3c"></i>פצצה: מפוצצת 3×3</span>
+        <span><i style="background:var(--ice)"></i>קרח: האטה ל־10 שניות</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pad" id="pad">
+    <button data-a="left" type="button" aria-label="שמאלה">◀</button>
+    <button data-a="right" type="button" aria-label="ימינה">▶</button>
+    <button data-a="down" type="button" aria-label="הורדה איטית">▼</button>
+    <button data-a="rot" type="button" aria-label="סיבוב">⟳</button>
+    <button data-a="hold" type="button" aria-label="שמור">⇄<small>שמור</small></button>
+    <button data-a="drop" class="drop" type="button" aria-label="הפלה">⤓<small>הפל</small></button>
+  </div>
+  <p class="keys">חצים: תזוזה וסיבוב · רווח: הפלה · C: שמירה · P: השהיה · M: צליל</p>
+</div>
+
+<script>
+(()=>{
+const COLS=10, ROWS=20, SPRINT=40;
+const COLORS={I:'#4fd6e8',O:'#ffd84a',T:'#b77bff',S:'#5fdc7a',Z:'#ff5f6d',J:'#4f8cff',L:'#ff9a3c'};
+const SHAPES={
+  I:[[0,1],[1,1],[2,1],[3,1]], O:[[1,0],[2,0],[1,1],[2,1]],
+  T:[[1,0],[0,1],[1,1],[2,1]], S:[[1,0],[2,0],[0,1],[1,1]],
+  Z:[[0,0],[1,0],[1,1],[2,1]], J:[[0,0],[0,1],[1,1],[2,1]], L:[[2,0],[0,1],[1,1],[2,1]]
+};
+const SIZE={I:4,O:4};
+const LINE_PTS=[0,100,300,500,800];
+const LINE_NAMES=['','','שורה כפולה','שורה משולשת','רביעייה!'];
+
+const $=id=>document.getElementById(id);
+const board=$('board'), ctx=board.getContext('2d');
+const nctx=$('next').getContext('2d'), hctx=$('hold').getContext('2d');
+const overlay=$('overlay');
+
+let grid,cur,queue,bag,hold,holdUsed,score,lines,level,combo,dropAcc,lastT,lockTimer;
+let state='idle',mode='marathon',cell=24,elapsed=0,slowUntil=0,pieceCount=0;
+let clearing=null,flash=0,popups=[],parts=[],lastDraw=0;
+
+/* ---------- storage ---------- */
+function load(k){try{return +localStorage.getItem(k)||0}catch(e){return 0}}
+function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+let bestScore=load('brickrain-best'), bestSprint=load('brickrain-sprint');
+let muted=false;try{muted=localStorage.getItem('brickrain-muted')==='1'}catch(e){}
+
+/* ---------- sound & haptics ---------- */
+let ac=null;
+function audioOn(){
+  if(!ac){try{ac=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}
+  if(ac&&ac.state==='suspended')ac.resume();
+}
+function tone(f,dur,type='square',vol=.05,delay=0,to){
+  if(muted||!ac)return;
+  const t=ac.currentTime+delay,o=ac.createOscillator(),g=ac.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+dur);
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(ac.destination);o.start(t);o.stop(t+dur+.02);
+}
+function noise(dur,vol){
+  if(muted||!ac)return;
+  const len=ac.sampleRate*dur,buf=ac.createBuffer(1,len,ac.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2);
+  const s=ac.createBufferSource(),g=ac.createGain(),f=ac.createBiquadFilter();
+  f.type='lowpass';f.frequency.value=900;s.buffer=buf;g.gain.value=vol;
+  s.connect(f).connect(g).connect(ac.destination);s.start();
+}
+const SFX={
+  move:()=>tone(240,.025,'square',.02),
+  rot:()=>tone(520,.045,'triangle',.04),
+  lock:()=>tone(120,.08,'triangle',.08),
+  drop:()=>tone(180,.12,'triangle',.1,0,60),
+  hold:()=>{tone(330,.05,'sine',.05);tone(440,.05,'sine',.05,.05)},
+  clear:(n,c)=>{const base=[523,659,784,1047,1319];const up=Math.pow(2,Math.min(c,8)/12);
+    for(let i=0;i<=n;i++)tone(base[i]*up,.14,'square',.045,i*.06)},
+  bomb:()=>{noise(.5,.5);tone(90,.45,'sawtooth',.09,0,30)},
+  ice:()=>{[1400,1800,2300,1900].forEach((f,i)=>tone(f,.18,'sine',.035,i*.05))},
+  over:()=>{[392,330,262,196].forEach((f,i)=>tone(f,.22,'triangle',.08,i*.16))},
+  win:()=>{[523,659,784,1047,1319].forEach((f,i)=>tone(f,.18,'square',.05,i*.09))},
+  perfect:()=>{[784,988,1175,1568].forEach((f,i)=>tone(f,.2,'sine',.06,i*.07))}
+};
+function buzz(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
+function setMuted(m){muted=m;$('muteBtn').textContent=m?'הפעל צליל':'השתק';save('brickrain-muted',m?'1':'0')}
+setMuted(muted);
+$('muteBtn').onclick=()=>{audioOn();setMuted(!muted)};
+
+/* ---------- pieces ---------- */
+function newGrid(){return Array.from({length:ROWS},()=>Array(COLS).fill(null))}
+function refill(){const t=Object.keys(SHAPES);for(let i=t.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[t[i],t[j]]=[t[j],t[i]]}bag.push(...t)}
+function take(){
+  if(bag.length<7)refill();
+  pieceCount++;
+  let power=null;
+  if(pieceCount>5&&Math.random()<1/9)power={i:Math.random()*4|0,kind:Math.random()<.6?'bomb':'ice'};
+  return{type:bag.shift(),power};
+}
+function spawn(p){
+  const n=SIZE[p.type]||3;
+  cur={type:p.type,power:p.power,cells:SHAPES[p.type].map(c=>[...c]),n,x:3,y:p.type==='I'?-1:0};
+  lockTimer=null;
+  if(collide(cur.cells,cur.x,cur.y))gameOver();
+}
+function nextPiece(){spawn(queue.shift());queue.push(take());holdUsed=false;drawSide()}
+function collide(cells,x,y){
+  for(const[cx,cy]of cells){const gx=x+cx,gy=y+cy;
+    if(gx<0||gx>=COLS||gy>=ROWS)return true;
+    if(gy>=0&&grid[gy][gx])return true}
+  return false;
+}
+function rotated(cells,n){return cells.map(([x,y])=>[n-1-y,x])}
+function rotate(){
+  if(cur.type==='O')return;
+  const r=rotated(cur.cells,cur.n);
+  for(const k of[0,-1,1,-2,2]){if(!collide(r,cur.x+k,cur.y)){cur.cells=r;cur.x+=k;resetLock();SFX.rot();return}}
+  if(!collide(r,cur.x,cur.y-1)){cur.cells=r;cur.y--;resetLock();SFX.rot()}
+}
+function move(dx){if(!collide(cur.cells,cur.x+dx,cur.y)){cur.x+=dx;resetLock();SFX.move();return true}return false}
+function resetLock(){if(lockTimer!==null)lockTimer=0}
+function soft(){if(!collide(cur.cells,cur.x,cur.y+1)){cur.y++;score+=1;updateStats();return true}return false}
+function hard(){let d=0;while(!collide(cur.cells,cur.x,cur.y+1)){cur.y++;d++}score+=d*2;SFX.drop();lock(true)}
+function ghostY(){let y=cur.y;while(!collide(cur.cells,cur.x,y+1))y++;return y}
+
+function lock(hardDrop){
+  let pw=null;
+  for(let i=0;i<cur.cells.length;i++){
+    const[cx,cy]=cur.cells[i],gx=cur.x+cx,gy=cur.y+cy;
+    if(gy<0){gameOver();return}
+    grid[gy][gx]=cur.type;
+    if(cur.power&&cur.power.i===i)pw={x:gx,y:gy,kind:cur.power.kind};
+  }
+  cur=null;
+  if(!hardDrop)SFX.lock();
+  buzz(12);
+  if(pw&&pw.kind==='bomb')explode(pw.x,pw.y);
+  if(pw&&pw.kind==='ice'){slowUntil=elapsed+10000;popup('האטה!','#9fe3ff');SFX.ice();buzz([20,40,20])}
+  const rows=[];for(let y=0;y<ROWS;y++)if(grid[y].every(Boolean))rows.push(y);
+  if(rows.length){clearing={rows,t0:performance.now()};return}
+  combo=-1;updateStats();nextPiece();
+}
+function explode(x,y){
+  let n=0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const gx=x+dx,gy=y+dy;
+    if(gx<0||gx>=COLS||gy<0||gy>=ROWS||!grid[gy][gx])continue;
+    burst(gx,gy,COLORS[grid[gy][gx]],8);grid[gy][gx]=null;n++;
+  }
+  burst(x,y,'#ffb547',18);
+  const pts=n*20*level;score+=pts;
+  popup(`בום! +${pts}`,'#ff7a4c');
+  shake=performance.now();SFX.bomb();buzz(80);
+}
+function finishClear(){
+  const rows=clearing.rows,n=rows.length;clearing=null;
+  grid=grid.filter((_,i)=>!rows.includes(i));
+  while(grid.length<ROWS)grid.unshift(Array(COLS).fill(null));
+  lines+=n;combo++;
+  let pts=LINE_PTS[n]*level;
+  if(LINE_NAMES[n])popup(LINE_NAMES[n],'#ecebf5');
+  if(combo>0){const b=50*combo*level;pts+=b;popup(`קומבו ×${combo}`,'#ffb547')}
+  if(grid.every(r=>r.every(v=>!v))){pts+=2000*level;popup('לוח נקי!','#5fdc7a');SFX.perfect()}
+  else SFX.clear(n,Math.max(combo,0));
+  score+=pts;flash=performance.now();buzz(n>=4?[30,30,60]:25);
+  if(mode==='marathon')level=1+Math.floor(lines/10);
+  updateStats();
+  if(mode==='sprint'&&lines>=SPRINT){win();return}
+  nextPiece();
+}
+function doHold(){
+  if(holdUsed||!cur)return;
+  const p={type:cur.type,power:cur.power};
+  if(hold)spawn(hold);else{spawn(queue.shift());queue.push(take())}
+  hold=p;holdUsed=true;SFX.hold();drawSide();
+}
+function interval(){
+  const base=mode==='sprint'?1000:Math.max(60,1000*Math.pow(.82,level-1));
+  return elapsed<slowUntil?base*2.5:base;
+}
+
+/* ---------- stats & flow ---------- */
+function fmtTime(ms){const s=ms/1000,m=Math.floor(s/60);return`${m}:${(s%60).toFixed(1).padStart(4,'0')}`}
+function updateStats(){
+  $('score').value=score.toLocaleString('en');
+  if(mode==='sprint'){
+    $('lines').value=Math.max(0,SPRINT-lines);$('level').value=fmtTime(elapsed);
+    $('best').value=bestSprint?fmtTime(bestSprint):'—';
+  }else{
+    $('lines').value=lines;$('level').value=level;
+    if(score>bestScore){bestScore=score;save('brickrain-best',bestScore)}
+    $('best').value=bestScore.toLocaleString('en');
+  }
+}
+function setLabels(){
+  const s=mode==='sprint';
+  $('lab2').textContent=s?'נותרו':'שורות';$('lab3').textContent=s?'זמן':'שלב';$('lab4').textContent=s?'שיא זמן':'שיא';
+}
+function showMenu(title,text){
+  $('ovTitle').textContent=title;$('ovText').textContent=text;
+  $('modes').hidden=false;$('resumeBtn').hidden=true;overlay.hidden=false;
+}
+function start(m){
+  audioOn();mode=m;setLabels();
+  grid=newGrid();bag=[];queue=[];hold=null;score=0;lines=0;level=1;combo=-1;dropAcc=0;
+  elapsed=0;slowUntil=0;pieceCount=0;clearing=null;popups=[];parts=[];
+  for(let i=0;i<3;i++)queue.push(take());
+  updateStats();state='play';overlay.hidden=true;$('pauseBtn').textContent='השהה';
+  nextPiece();lastT=performance.now();requestAnimationFrame(loop);
+}
+function gameOver(){
+  state='over';SFX.over();buzz([60,40,120]);
+  const t=mode==='sprint'?`נעצרת אחרי ${lines} שורות מתוך ${SPRINT}.`:`צברת ${score.toLocaleString('en')} נקודות ב־${lines} שורות.`;
+  showMenu('המשחק נגמר',t);draw(performance.now());
+}
+function win(){
+  state='over';SFX.win();buzz([40,40,40,40,100]);
+  const rec=!bestSprint||elapsed<bestSprint;
+  if(rec){bestSprint=elapsed;save('brickrain-sprint',Math.round(elapsed))}
+  updateStats();
+  showMenu(rec?'שיא חדש!':'סיימת!',`40 שורות ב־${fmtTime(elapsed)}.${rec?'':` השיא שלך: ${fmtTime(bestSprint)}.`}`);
+  draw(performance.now());
+}
+function togglePause(){
+  if(state==='play'){
+    state='pause';$('ovTitle').textContent='מושהה';$('ovText').textContent='הלבנים מחכות לך.';
+    $('modes').hidden=true;$('resumeBtn').hidden=false;overlay.hidden=false;$('pauseBtn').textContent='המשך';
+  }else if(state==='pause'){
+    state='play';overlay.hidden=true;$('pauseBtn').textContent='השהה';lastT=performance.now();requestAnimationFrame(loop);
+  }
+}
+$('marathonBtn').onclick=()=>start('marathon');
+$('sprintBtn').onclick=()=>start('sprint');
+$('resumeBtn').onclick=togglePause;
+$('pauseBtn').onclick=togglePause;
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play')togglePause()});
+
+function loop(t){
+  if(state!=='play')return;
+  const dt=Math.min(100,t-lastT);lastT=t;elapsed+=dt;
+  if(mode==='sprint')$('level').value=fmtTime(elapsed);
+  if(clearing){
+    if(t-clearing.t0>240)finishClear();
+  }else if(cur){
+    handleRepeat(t);
+    if(cur){
+      dropAcc+=dt;
+      if(collide(cur.cells,cur.x,cur.y+1)){
+        if(lockTimer===null)lockTimer=0;
+        lockTimer+=dt;
+        if(lockTimer>500){lock(false);dropAcc=0}
+      }else{
+        lockTimer=null;
+        if(dropAcc>=interval()){dropAcc=0;cur.y++}
+      }
+    }
+  }
+  draw(t);
+  if(state==='play')requestAnimationFrame(loop);
+}
+
+/* ---------- effects ---------- */
+let shake=0;
+function popup(text,color){popups.push({text,color,t0:performance.now(),row:popups.filter(p=>performance.now()-p.t0<900).length})}
+function burst(gx,gy,color,count){
+  for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,v=.05+Math.random()*.25;
+    parts.push({x:gx+.5,y:gy+.5,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.1,life:1,color})}
+}
+
+/* ---------- drawing ---------- */
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);const f=v=>Math.max(0,Math.min(255,Math.round(v+amt)));
+  return`rgb(${f(n>>16)},${f(n>>8&255)},${f(n&255)})`}
+function block(c,x,y,s,color,alpha=1){
+  c.globalAlpha=alpha;
+  c.fillStyle=color;c.fillRect(x+1,y+1,s-2,s-2);
+  c.fillStyle=shade(color,55);c.fillRect(x+1,y+1,s-2,Math.max(2,s*.16));
+  c.fillStyle=shade(color,-60);c.fillRect(x+1,y+s-1-Math.max(2,s*.14),s-2,Math.max(2,s*.14));
+  c.globalAlpha=1;
+}
+function powerIcon(c,x,y,s,kind,t){
+  const cx=x+s/2,cy=y+s/2;
+  if(kind==='bomb'){
+    c.fillStyle='#16141f';c.beginPath();c.arc(cx,cy+s*.04,s*.3,0,Math.PI*2);c.fill();
+    c.strokeStyle='#e9e3d0';c.lineWidth=Math.max(1,s*.07);c.beginPath();c.moveTo(cx+s*.16,cy-s*.18);c.lineTo(cx+s*.26,cy-s*.32);c.stroke();
+    const pulse=.6+.4*Math.sin((t||0)/90);
+    c.fillStyle=`rgba(255,${120+80*pulse|0},40,1)`;c.beginPath();c.arc(cx+s*.28,cy-s*.34,s*.09*pulse+s*.04,0,Math.PI*2);c.fill();
+  }else{
+    c.fillStyle='rgba(220,245,255,.9)';c.fillRect(x+2,y+2,s-4,s-4);
+    c.strokeStyle='#2a8bc2';c.lineWidth=Math.max(1,s*.08);c.lineCap='round';
+    for(let k=0;k<3;k++){const a=k*Math.PI/3;c.beginPath();
+      c.moveTo(cx-Math.cos(a)*s*.3,cy-Math.sin(a)*s*.3);c.lineTo(cx+Math.cos(a)*s*.3,cy+Math.sin(a)*s*.3);c.stroke()}
+    c.lineCap='butt';
+  }
+}
+function draw(t){
+  const s=cell,W=COLS*s,H=ROWS*s;
+  const dt=Math.min(50,t-lastDraw||16);lastDraw=t;
+  ctx.save();
+  const sh=1-(t-shake)/300;
+  if(sh>0)ctx.translate((Math.random()-.5)*8*sh,(Math.random()-.5)*8*sh);
+  ctx.fillStyle='#0a0a12';ctx.fillRect(-10,-10,W+20,H+20);
+  ctx.strokeStyle='#17162a';ctx.lineWidth=1;
+  for(let x=1;x<COLS;x++){ctx.beginPath();ctx.moveTo(x*s+.5,0);ctx.lineTo(x*s+.5,H);ctx.stroke()}
+  for(let y=1;y<ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*s+.5);ctx.lineTo(W,y*s+.5);ctx.stroke()}
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){const v=grid[y][x];if(v)block(ctx,x*s,y*s,s,COLORS[v])}
+
+  if(clearing){
+    const p=Math.min(1,(t-clearing.t0)/240);
+    for(const r of clearing.rows){
+      ctx.fillStyle=`rgba(255,255,255,${.9-.5*p})`;
+      const w=W*(1-p);ctx.fillRect((W-w)/2,r*s,w,s);
+    }
+  }
+  if(cur&&state!=='over'){
+    const gy=ghostY();
+    ctx.strokeStyle=COLORS[cur.type];ctx.globalAlpha=.45;ctx.lineWidth=2;
+    for(const[cx,cy]of cur.cells){const y=gy+cy;if(y>=0)ctx.strokeRect((cur.x+cx)*s+2,y*s+2,s-4,s-4)}
+    ctx.globalAlpha=1;
+    cur.cells.forEach(([cx,cy],i)=>{const y=cur.y+cy;if(y<0)return;
+      const px=(cur.x+cx)*s,py=y*s;block(ctx,px,py,s,COLORS[cur.type]);
+      if(cur.power&&cur.power.i===i)powerIcon(ctx,px,py,s,cur.power.kind,t)});
+  }
+  // particles
+  parts=parts.filter(p=>p.life>0);
+  for(const p of parts){
+    p.x+=p.vx*dt/16;p.y+=p.vy*dt/16;p.vy+=.012*dt/16;p.life-=dt/700;
+    ctx.globalAlpha=Math.max(0,p.life);ctx.fillStyle=p.color;
+    const z=s*.28*p.life+2;ctx.fillRect(p.x*s-z/2,p.y*s-z/2,z,z);
+  }
+  ctx.globalAlpha=1;
+  // line-clear flash
+  const fa=1-(t-flash)/250;
+  if(fa>0){ctx.fillStyle=`rgba(255,181,71,${fa*.22})`;ctx.fillRect(0,0,W,H)}
+  // ice
+  const iceLeft=slowUntil-elapsed;
+  board.classList.toggle('iced',state==='play'&&iceLeft>0);
+  if(state!=='idle'&&iceLeft>0){
+    ctx.fillStyle='rgba(159,227,255,.07)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#9fe3ff';ctx.font=`700 ${Math.round(s*.6)}px Assistant,system-ui,sans-serif`;
+    ctx.textAlign='center';ctx.fillText(`האטה ${Math.ceil(iceLeft/1000)}`,W/2,s*.9);
+  }
+  // popups
+  popups=popups.filter(p=>t-p.t0<1100);
+  ctx.textAlign='center';
+  for(const p of popups){
+    const k=(t-p.t0)/1100;
+    ctx.globalAlpha=k<.15?k/.15:1-Math.max(0,(k-.6)/.4);
+    ctx.font=`400 ${Math.round(s*1.05)}px "Secular One",Assistant,system-ui,sans-serif`;
+    ctx.lineWidth=4;ctx.strokeStyle='#0a0a12';
+    const y=H*.42+p.row*s*1.3-k*s*1.5;
+    ctx.strokeText(p.text,W/2,y);ctx.fillStyle=p.color;ctx.fillText(p.text,W/2,y);
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+function drawMini(c,p,oy,box,dim){
+  const shape=SHAPES[p.type],s=24;
+  const xs=shape.map(q=>q[0]),ys=shape.map(q=>q[1]);
+  const w=(Math.max(...xs)-Math.min(...xs)+1)*s,h=(Math.max(...ys)-Math.min(...ys)+1)*s;
+  const ox=(120-w)/2-Math.min(...xs)*s,oy2=oy+(box-h)/2-Math.min(...ys)*s;
+  shape.forEach(([x,y],i)=>{block(c,ox+x*s,oy2+y*s,s,COLORS[p.type],dim?.35:1);
+    if(p.power&&p.power.i===i&&!dim)powerIcon(c,ox+x*s,oy2+y*s,s,p.power.kind,0)});
+}
+function drawSide(){
+  nctx.clearRect(0,0,120,300);hctx.clearRect(0,0,120,80);
+  queue.forEach((p,i)=>drawMini(nctx,p,i*100,90,false));
+  if(hold)drawMini(hctx,hold,0,80,holdUsed);
+}
+
+/* ---------- sizing ---------- */
+function fit(){
+  const wrap=$('wellwrap');
+  const maxW=wrap.clientWidth-4,maxH=wrap.clientHeight-4;
+  cell=Math.max(10,Math.floor(Math.min(maxW/COLS,maxH/ROWS)));
+  const dpr=window.devicePixelRatio||1;
+  board.style.width=cell*COLS+'px';board.style.height=cell*ROWS+'px';
+  board.width=cell*COLS*dpr;board.height=cell*ROWS*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(grid)draw(performance.now());
+}
+addEventListener('resize',fit);
+
+/* ---------- input ---------- */
+const held={};
+function act(a){
+  if(state!=='play'||!cur)return;
+  if(a==='left')move(-1);else if(a==='right')move(1);else if(a==='down')soft();
+  else if(a==='rot')rotate();else if(a==='drop')hard();else if(a==='hold')doHold();
+  draw(performance.now());
+}
+const REPEAT={left:1,right:1,down:1};
+function press(a){audioOn();if(held[a])return;act(a);if(REPEAT[a])held[a]={next:performance.now()+(a==='down'?50:170)}}
+function release(a){delete held[a]}
+function handleRepeat(t){for(const a in held){if(t>=held[a].next){act(a);held[a].next=t+(a==='down'?45:55)}}}
+
+document.querySelectorAll('#pad button').forEach(b=>{
+  const a=b.dataset.a;
+  b.addEventListener('pointerdown',e=>{e.preventDefault();b.classList.add('on');press(a)});
+  const up=()=>{b.classList.remove('on');release(a)};
+  b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('pointerleave',up);
+});
+const KEYS={ArrowLeft:'left',ArrowRight:'right',ArrowDown:'down',ArrowUp:'rot',KeyX:'rot',KeyZ:'rot',Space:'drop',KeyC:'hold',ShiftLeft:'hold',ShiftRight:'hold'};
+addEventListener('keydown',e=>{
+  if(e.code==='KeyP'||e.code==='Escape'){togglePause();return}
+  if(e.code==='KeyM'){audioOn();setMuted(!muted);return}
+  if(e.code==='Enter'&&state!=='play'){state==='pause'?togglePause():start(mode);return}
+  const a=KEYS[e.code];if(!a)return;e.preventDefault();
+  if(e.repeat)return;press(a);
+});
+addEventListener('keyup',e=>{const a=KEYS[e.code];if(a)release(a)});
+
+/* swipe on the well: tap rotates, swipe sideways moves, quick swipe down drops */
+let sw=null;
+board.addEventListener('pointerdown',e=>{e.preventDefault();audioOn();try{board.setPointerCapture(e.pointerId)}catch(_){}sw={x:e.clientX,y:e.clientY,t:performance.now(),moved:0}});
+board.addEventListener('pointermove',e=>{
+  if(!sw||state!=='play'||!cur)return;
+  const dx=e.clientX-sw.x,step=cell;
+  while(Math.abs(dx-sw.moved*step)>=step){const d=dx>sw.moved*step?1:-1;move(d);sw.moved+=d;draw(performance.now())}
+});
+board.addEventListener('pointerup',e=>{
+  if(!sw)return;const dy=e.clientY-sw.y,dx=e.clientX-sw.x,dt=performance.now()-sw.t;
+  if(dy>cell*3&&dt<400&&Math.abs(dy)>Math.abs(dx))act('drop');
+  else if(Math.abs(dx)<8&&Math.abs(dy)<8)act('rot');
+  sw=null;
+});
+board.addEventListener('pointercancel',()=>{sw=null});
+
+/* idle preview: a sample stack so the first frame shows the game */
+grid=newGrid();
+const sample=['.........L','J.......LL','JJJ.SS..ZL','IIIISSTZZO','OOLTTTTZOO'];
+sample.forEach((r,i)=>r.split('').forEach((ch,x)=>{grid[ROWS-sample.length+i][x]=ch==='.'?null:ch}));
+queue=[{type:'S',power:null},{type:'I',power:{i:2,kind:'ice'}},{type:'L',power:null}];
+hold={type:'O',power:null};holdUsed=false;score=0;lines=0;level=1;combo=-1;
+cur={type:'T',power:{i:2,kind:'bomb'},cells:SHAPES.T.map(c=>[...c]),n:3,x:4,y:7};
+updateStats();fit();drawSide();draw(0);
+})();
+</script>
+
+</body>
+</html>
